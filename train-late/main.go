@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	routes        []Route
-	trips         []Trip
+	routes     []Route
+	trips      []Trip
 	searchTmpl *template.Template
 )
 
@@ -42,8 +42,8 @@ func main() {
 	http.HandleFunc("/trips", handleTrips)
 	http.HandleFunc("/lateness", handleLateness)
 
-	fmt.Println("Server starting on port 8080...")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	fmt.Println("Server starting on port 8082...")
+	if err := http.ListenAndServe(":8082", nil); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -62,7 +62,7 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
         <h1 class="f2 tc">Train Lateness</h1>
         <div class="mb3">
             <label for="route" class="f6 b db mb2">Route</label>
-            <input id="route-search" name="route-search" class="db w-100 pa2 ba b--black-20 br2"
+            <input id="route" name="route" class="db w-100 pa2 ba b--black-20 br2"
                    type="text" placeholder="Search for a route..."
                    hx-get="/search"
                    hx-trigger="keyup changed delay:500ms"
