@@ -3,8 +3,13 @@ package main
 import (
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
+
+	"google.golang.org/protobuf/proto"
+	"train-late/gtfs-realtime"
 )
 
 var (
@@ -141,26 +146,61 @@ func handleTrips(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleLateness(w http.ResponseWriter, r *http.Request) {
-	// NOTE: The real-time trip update API provides data in a binary format
-	// using protocol buffers. To parse this data, you would need the .proto
-	// file from the Transport for NSW open data portal and a library like
-	// protoc-gen-go.
-	//
-	// For the purpose of this demo, we'll continue to return a static value.
 	tripID := r.URL.Query().Get("trip")
 	if tripID == "" {
 		http.Error(w, "tripID is required", http.StatusBadRequest)
 		return
 	}
 
-	// In a real application, you would fetch the data from the API and
-	// decode it using the .proto file. The logic would look something
-	// like this:
-	//
-	// 1. Fetch the data from the API endpoint for the selected trip.
-	// 2. Unmarshal the protocol buffer data into a Go struct.
-	// 3. Extract the delay information from the struct.
-	// 4. Return the delay to the user.
+	apiKey := os.Getenv("TFNWS_API_KEY")
+	if apiKey == "" {
+		log.Println("TFNWS_API_KEY not set")
+		http.Error(w, "API key not configured", http.StatusInternalServerError)
+		return
+	}
 
-	fmt.Fprintf(w, `<div class="f-headline tc">5</div><div class="tc">minutes late</div>`)
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", "https://api.transport.nsw.gov.au/v1/gtfs/realtime/nswtrains", nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Authorization", "apikey "+apiKey)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	feed := &gtfs_realtime.FeedMessage{}
+	if err := proto.Unmarshal(body, feed); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	for _, entity := range feed.Entity {
+		if entity.TripUpdate != nil &&
+			entity.TripUpdate.Trip != nil &&
+			entity.TripUpdate.Trip.TripId != nil &&
+			*entity.TripUpdate.Trip.TripId == tripID {
+			if len(entity.TripUpdate.StopTimeUpdate) > 0 &&
+				entity.TripUpdate.StopTimeUpdate[0].Departure != nil &&
+				entity.TripUpdate.StopTimeUpdate[0].Departure.Delay != nil {
+				delay := *entity.TripUpdate.StopTimeUpdate[0].Departure.Delay
+				minutesLate := delay / 60
+				fmt.Fprintf(w, `<div class="f-headline tc">%d</div><div class="tc">minutes late</div>`, minutesLate)
+				return
+			}
+		}
+	}
+
+	fmt.Fprintf(w, `<div class="f2 tc">No delay information found for this trip.</div>`)
 }
