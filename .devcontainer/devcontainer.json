@@ -1,0 +1,15 @@
+{
+    "name": "Go Development",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": "."
+    },
+    "containerUser": "vscode",
+    "remoteUser": "vscode",
+    "onCreateCommand": {
+        "homeperm": "chown vscode /home/vscode",
+    },
+    "forwardPorts": [ 8080 ]
+}
+
+// vim: ft=jsonc
