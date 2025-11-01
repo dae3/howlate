@@ -5,15 +5,28 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"strings"
 )
 
 var (
-	routes []Route
-	trips  []Trip
+	routes        []Route
+	trips         []Trip
+	searchTmpl *template.Template
 )
 
 func main() {
 	var err error
+	searchTmpl, err = template.New("results").Parse(`
+{{range .}}
+<div class="pa2 br2 bb b--black-20"
+     onclick="selectRoute('{{.ID}}', '{{.ShortName}} - {{.LongName}}')">
+    {{.ShortName}} - {{.LongName}}
+</div>
+{{end}}
+`)
+	if err != nil {
+		log.Fatalf("failed to parse search template: %v", err)
+	}
 	routes, err = readRoutes("data/routes.txt")
 	if err != nil {
 		log.Fatalf("failed to read routes: %v", err)
@@ -25,6 +38,7 @@ func main() {
 	}
 
 	http.HandleFunc("/", handleIndex)
+	http.HandleFunc("/search", handleSearch)
 	http.HandleFunc("/trips", handleTrips)
 	http.HandleFunc("/lateness", handleLateness)
 
@@ -48,15 +62,18 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
         <h1 class="f2 tc">Train Lateness</h1>
         <div class="mb3">
             <label for="route" class="f6 b db mb2">Route</label>
-            <select id="route" name="route" class="db w-100 pa2 ba b--black-20 br2"
-                hx-get="/trips"
-                hx-target="#trip"
-                hx-indicator="#loading-trips">
-                <option value="">Select a Route</option>
-                {{range .}}
-                <option value="{{.ID}}">{{.ShortName}} - {{.LongName}}</option>
-                {{end}}
-            </select>
+            <input id="route-search" name="route-search" class="db w-100 pa2 ba b--black-20 br2"
+                   type="text" placeholder="Search for a route..."
+                   hx-get="/search"
+                   hx-trigger="keyup changed delay:500ms"
+                   hx-target="#route-results"
+                   hx-indicator="#loading-routes">
+            <input type="hidden" id="route" name="route"
+                   hx-get="/trips"
+                   hx-target="#trip"
+                   hx-indicator="#loading-trips">
+            <div id="route-results"></div>
+            <span id="loading-routes" class="htmx-indicator">Searching...</span>
         </div>
         <div class="mb3">
             <label for="trip" class="f6 b db mb2">Trip</label>
@@ -76,22 +93,31 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 
     <script>
         document.addEventListener('DOMContentLoaded', (event) => {
-            const routeSelect = document.getElementById('route');
+            const routeSearchInput = document.getElementById('route-search');
+            const routeInput = document.getElementById('route');
             const tripSelect = document.getElementById('trip');
+            const routeResults = document.getElementById('route-results');
 
-            // Load saved values
-            const savedRoute = localStorage.getItem('selectedRoute');
-            if (savedRoute) {
-                routeSelect.value = savedRoute;
-                htmx.trigger(routeSelect, 'change'); // Trigger HTMX to load trips
+            // Function to handle route selection
+            window.selectRoute = function(id, name) {
+                routeInput.value = id;
+                routeSearchInput.value = name;
+                routeResults.innerHTML = '';
+                localStorage.setItem('selectedRouteId', id);
+                localStorage.setItem('selectedRouteName', name);
+                localStorage.removeItem('selectedTrip');
+                tripSelect.innerHTML = '<option value="">Select a Trip</option>';
+                htmx.trigger(routeInput, 'change');
             }
 
-            // Save values on change
-            routeSelect.addEventListener('change', () => {
-                localStorage.setItem('selectedRoute', routeSelect.value);
-                localStorage.removeItem('selectedTrip'); // Clear trip selection
-                tripSelect.innerHTML = '<option value="">Select a Trip</option>'; // Reset trip dropdown
-            });
+            // Load saved values
+            const savedRouteId = localStorage.getItem('selectedRouteId');
+            const savedRouteName = localStorage.getItem('selectedRouteName');
+            if (savedRouteId && savedRouteName) {
+                routeInput.value = savedRouteId;
+                routeSearchInput.value = savedRouteName;
+                htmx.trigger(routeInput, 'change');
+            }
 
             tripSelect.addEventListener('change', () => {
                 localStorage.setItem('selectedTrip', tripSelect.value);
@@ -116,7 +142,21 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	tmpl.Execute(w, routes)
+	tmpl.Execute(w, nil)
+}
+
+func handleSearch(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("route")
+	var matchingRoutes []Route
+	if query != "" {
+		for _, route := range routes {
+			if strings.Contains(strings.ToLower(route.LongName), strings.ToLower(query)) ||
+				strings.Contains(strings.ToLower(route.ShortName), strings.ToLower(query)) {
+				matchingRoutes = append(matchingRoutes, route)
+			}
+		}
+	}
+	searchTmpl.Execute(w, matchingRoutes)
 }
 
 func handleTrips(w http.ResponseWriter, r *http.Request) {
