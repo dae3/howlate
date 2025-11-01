@@ -9,7 +9,7 @@
     "onCreateCommand": {
         "homeperm": "chown vscode /home/vscode",
     },
-    "forwardPorts": [ 8080 ]
+    "forwardPorts": [ 8082 ]
 }
 
 // vim: ft=jsonc
