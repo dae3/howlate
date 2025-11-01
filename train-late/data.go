@@ -37,11 +37,13 @@ func readRoutes(path string) ([]Route, error) {
 			return nil, err
 		}
 
-		routes = append(routes, Route{
-			ID:        record[0],
-			ShortName: record[2],
-			LongName:  record[3],
-		})
+		if record[1] == "x0001" || record[1] == "X0000" { // trains only
+			routes = append(routes, Route{
+				ID:        record[0],
+				ShortName: record[2],
+				LongName:  record[3],
+			})
+		}
 	}
 
 	return routes, nil
@@ -67,10 +69,12 @@ func readTrips(path string) ([]Trip, error) {
 			return nil, err
 		}
 
-		trips = append(trips, Trip{
-			RouteID: record[0],
-			ID:      record[2],
-		})
+		if true {
+			trips = append(trips, Trip{
+				RouteID: record[0],
+				ID:      record[2],
+			})
+		}
 	}
 
 	return trips, nil
